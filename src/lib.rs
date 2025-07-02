@@ -1,3 +1,3 @@
 pub mod circuit;
-pub mod gates;
 pub mod gadgets;
+pub mod gates;
