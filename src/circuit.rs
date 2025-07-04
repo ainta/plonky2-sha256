@@ -476,12 +476,11 @@ pub fn make_circuits<F: RichField + Extendable<D>, const D: usize>(
 #[cfg(test)]
 pub mod tests {
     use plonky2::{
-        iop::witness::{PartialWitness, WitnessWrite},
-        plonk::{
+        fri::{reduction_strategies::FriReductionStrategy, FriConfig}, iop::witness::{PartialWitness, WitnessWrite}, plonk::{
             circuit_builder::CircuitBuilder,
             circuit_data::CircuitConfig,
             config::{GenericConfig, PoseidonGoldilocksConfig},
-        },
+        }
     };
     use sha2::Digest;
 
@@ -489,12 +488,40 @@ pub mod tests {
         array_to_bits, make_circuits, EXAMPLE_MESSAGE,
     };
 
+
+    pub const fn sha256_narrow_config() -> CircuitConfig {
+        CircuitConfig {
+            num_wires: 80, // ≈128 advice + 48 routed
+            num_routed_wires: 40,
+            num_constants: 2,
+
+            use_base_arithmetic_gate: true,
+            security_bits: 100,
+            num_challenges: 2,
+            zero_knowledge: false,
+
+            // We keep max_quotient_degree_factor small because depth is small.
+            max_quotient_degree_factor: 8,
+
+            fri_config: FriConfig {
+                rate_bits: 3, // commitment rate 1/4
+                cap_height: 4,
+                proof_of_work_bits: 16,
+
+                // Reduction strategy unchanged: (arity=16, then arity=32)
+                reduction_strategy: FriReductionStrategy::ConstantArityBits(4, 5),
+
+                num_query_rounds: 28, // ≈100-bit soundness for deg ≤ 1 k, rate 1/4
+            },
+        }
+    }
+
     #[test]
     fn test_sha256_circuit() -> anyhow::Result<()> {
         const D: usize = 2;
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
-        let mut builder = CircuitBuilder::<F, D>::new(CircuitConfig::standard_recursion_config());
+        let mut builder = CircuitBuilder::<F, D>::new(sha256_narrow_config());
 
         let msg = EXAMPLE_MESSAGE;
 
