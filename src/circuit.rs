@@ -878,7 +878,7 @@ pub mod tests {
         const D: usize = 2;
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
-        let mut builder = CircuitBuilder::<F, D>::new(sha256_wide_config());
+        let mut builder = CircuitBuilder::<F, D>::new(CircuitConfig::standard_recursion_config());
 
         let msg = EXAMPLE_MESSAGE;
         let digest = sha2::Sha256::digest(&msg);
@@ -911,6 +911,7 @@ pub mod tests {
         // Build the circuit
         let data = builder.build::<C>();
 
+        println!("num_rows: {}", data.common.degree());
         // Generate proof
         let proof = data.prove(pw)?;
 
