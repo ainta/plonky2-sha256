@@ -3,7 +3,7 @@ use plonky2::{
     field::extension::Extendable,
     hash::hash_types::RichField,
     iop::{
-        target::BoolTarget,
+        target::{BoolTarget, Target},
         witness::{PartialWitness, WitnessWrite},
     },
     plonk::circuit_builder::CircuitBuilder,
@@ -12,8 +12,10 @@ use plonky2_u32::{
     gadgets::arithmetic_u32::{CircuitBuilderU32, U32Target},
     witness::WitnessU32,
 };
-use std::cell::RefCell;
+use std::{cell::RefCell, result};
 use std::rc::Rc;
+
+use crate::{gadgets::XorOps, gates::Xor3Gate};
 
 #[rustfmt::skip]
 pub const H256: [u32; 8] = [
@@ -177,16 +179,27 @@ fn shift32(y: usize) -> Vec<usize> {
     res
 }
 
-fn xor3<F: RichField + Extendable<D>, const D: usize>(
+
+fn xor3_with_permutation<F: RichField + Extendable<D>, const D: usize>(
     builder: &mut CircuitBuilder<F, D>,
-    a: BoolTarget,
-    b: BoolTarget,
-    c: BoolTarget,
-) -> BoolTarget {
-    let u = builder.sub(a.target, b.target);
-    let d = builder.mul(u, u);
-    let v = builder.sub(d, c.target);
-    BoolTarget::new_unsafe(builder.mul(v, v))
+    a_bits: &Vec<BoolTarget>,
+    p1: &Vec<usize>,
+    p2: &Vec<usize>,
+    p3: &Vec<usize>,
+) -> Vec<BoolTarget> {
+    let mut res = Vec::new();
+    for j in 0..2{
+        let mut a1 = Vec::new();
+        let mut a2 = Vec::new();
+        let mut a3 = Vec::new();
+        for i in 0..16{
+            a1.push(a_bits[p1[i + j*16]]);
+            a2.push(a_bits[p2[i + j*16]]);
+            a3.push(a_bits[p3[i + j*16]]);
+        }
+        res.extend(builder.add_xor3(a1, a2, a3));
+    }
+    res
 }
 
 //#define Sigma0(x)    (ROTATE((x), 2) ^ ROTATE((x),13) ^ ROTATE((x),22))
@@ -198,15 +211,7 @@ fn big_sigma0_lazy<F: RichField + Extendable<D>, const D: usize>(
     let rotate2 = rotate32(2);
     let rotate13 = rotate32(13);
     let rotate22 = rotate32(22);
-    let mut res_bits = Vec::new();
-    for i in 0..32 {
-        res_bits.push(xor3(
-            builder,
-            a_bits[rotate2[i]],
-            a_bits[rotate13[i]],
-            a_bits[rotate22[i]],
-        ));
-    }
+    let res_bits = xor3_with_permutation(builder, &a_bits, &rotate2, &rotate13, &rotate22);
     LazyU32WithBits::from_bits(builder, res_bits)
 }
 
@@ -219,15 +224,7 @@ fn big_sigma1_lazy<F: RichField + Extendable<D>, const D: usize>(
     let rotate6 = rotate32(6);
     let rotate11 = rotate32(11);
     let rotate25 = rotate32(25);
-    let mut res_bits = Vec::new();
-    for i in 0..32 {
-        res_bits.push(xor3(
-            builder,
-            a_bits[rotate6[i]],
-            a_bits[rotate11[i]],
-            a_bits[rotate25[i]],
-        ));
-    }
+    let res_bits = xor3_with_permutation(builder, &a_bits, &rotate6, &rotate11, &rotate25);
     LazyU32WithBits::from_bits(builder, res_bits)
 }
 
@@ -241,15 +238,7 @@ fn sigma0_lazy<F: RichField + Extendable<D>, const D: usize>(
     let rotate7 = rotate32(7);
     let rotate18 = rotate32(18);
     let shift3 = shift32(3);
-    let mut res_bits = Vec::new();
-    for i in 0..32 {
-        res_bits.push(xor3(
-            builder,
-            a_bits[rotate7[i]],
-            a_bits[rotate18[i]],
-            a_bits[shift3[i]],
-        ));
-    }
+    let res_bits = xor3_with_permutation(builder, &a_bits, &rotate7, &rotate18, &shift3);
     LazyU32WithBits::from_bits(builder, res_bits)
 }
 
@@ -263,15 +252,7 @@ fn sigma1_lazy<F: RichField + Extendable<D>, const D: usize>(
     let rotate17 = rotate32(17);
     let rotate19 = rotate32(19);
     let shift10 = shift32(10);
-    let mut res_bits = Vec::new();
-    for i in 0..32 {
-        res_bits.push(xor3(
-            builder,
-            a_bits[rotate17[i]],
-            a_bits[rotate19[i]],
-            a_bits[shift10[i]],
-        ));
-    }
+    let res_bits = xor3_with_permutation(builder, &a_bits, &rotate17, &rotate19, &shift10);
     LazyU32WithBits::from_bits(builder, res_bits)
 }
 
@@ -288,13 +269,10 @@ fn ch_lazy<F: RichField + Extendable<D>, const D: usize>(
     let a_bits = a.get_bits();
     let b_bits = b.get_bits();
     let c_bits = c.get_bits();
+
     let mut res_bits = Vec::new();
-    for i in 0..32 {
-        let b_sub_c = builder.sub(b_bits[i].target, c_bits[i].target);
-        let a_mul_b_sub_c = builder.mul(a_bits[i].target, b_sub_c);
-        let a_mul_b_sub_c_add_c = builder.add(a_mul_b_sub_c, c_bits[i].target);
-        res_bits.push(BoolTarget::new_unsafe(a_mul_b_sub_c_add_c));
-    }
+    res_bits.extend(builder.add_ch(a_bits[0..16].to_vec(), b_bits[0..16].to_vec(), c_bits[0..16].to_vec()));
+    res_bits.extend(builder.add_ch(a_bits[16..32].to_vec(), b_bits[16..32].to_vec(), c_bits[16..32].to_vec()));
     LazyU32WithBits::from_bits(builder, res_bits)
 }
 
@@ -314,17 +292,10 @@ fn maj_lazy<F: RichField + Extendable<D>, const D: usize>(
     let a_bits = a.get_bits();
     let b_bits = b.get_bits();
     let c_bits = c.get_bits();
+
     let mut res_bits = Vec::new();
-    for i in 0..32 {
-        let m = builder.mul(b_bits[i].target, c_bits[i].target);
-        let two = builder.two();
-        let two_m = builder.mul(two, m);
-        let b_add_c = builder.add(b_bits[i].target, c_bits[i].target);
-        let b_add_c_sub_two_m = builder.sub(b_add_c, two_m);
-        let a_mul_b_add_c_sub_two_m = builder.mul(a_bits[i].target, b_add_c_sub_two_m);
-        let res = builder.add(a_mul_b_add_c_sub_two_m, m);
-        res_bits.push(BoolTarget::new_unsafe(res));
-    }
+    res_bits.extend(builder.add_maj(a_bits[0..16].to_vec(), b_bits[0..16].to_vec(), c_bits[0..16].to_vec()));
+    res_bits.extend(builder.add_maj(a_bits[16..32].to_vec(), b_bits[16..32].to_vec(), c_bits[16..32].to_vec()));
     LazyU32WithBits::from_bits(builder, res_bits)
 }
 
@@ -681,32 +652,6 @@ pub mod tests {
     };
 
 
-    pub const fn sha256_narrow_config() -> CircuitConfig {
-        CircuitConfig {
-            num_wires: 80, // ≈128 advice + 48 routed
-            num_routed_wires: 40,
-            num_constants: 2,
-
-            use_base_arithmetic_gate: true,
-            security_bits: 100,
-            num_challenges: 2,
-            zero_knowledge: false,
-
-            // We keep max_quotient_degree_factor small because depth is small.
-            max_quotient_degree_factor: 8,
-
-            fri_config: FriConfig {
-                rate_bits: 3, // commitment rate 1/4
-                cap_height: 4,
-                proof_of_work_bits: 16,
-
-                // Reduction strategy unchanged: (arity=16, then arity=32)
-                reduction_strategy: FriReductionStrategy::ConstantArityBits(4, 5),
-
-                num_query_rounds: 28, // ≈100-bit soundness for deg ≤ 1 k, rate 1/4
-            },
-        }
-    }
 
     #[test]
     #[ignore]
@@ -714,7 +659,7 @@ pub mod tests {
         const D: usize = 2;
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
-        let mut builder = CircuitBuilder::<F, D>::new(sha256_narrow_config());
+        let mut builder = CircuitBuilder::<F, D>::new(CircuitConfig::wide_ecc_config());
 
         let msg = EXAMPLE_MESSAGE;
 
@@ -824,13 +769,13 @@ pub mod tests {
         const D: usize = 2;
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
-        let mut builder = CircuitBuilder::<F, D>::new(CircuitConfig::standard_recursion_config());
+        let mut builder = CircuitBuilder::<F, D>::new(CircuitConfig::wide_ecc_config());
 
         let msg = EXAMPLE_MESSAGE;
 
         let digest = sha2::Sha256::digest(&msg);
 
-        let tot_bits = 25600; // 50 blocks, instead of 47 blocks which is needed
+        let tot_bits = 512*48; // 48 blocks, instead of 47 blocks which is needed
 
         // Create SHA256 circuit using your make_circuits function
         let sha256_targets = make_variable_length_circuits(&mut builder, tot_bits);
