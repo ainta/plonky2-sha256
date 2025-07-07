@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 
 use plonky2::{
     field::{extension::Extendable, types::Field},
-    gates::gate::{Gate, GateRef},
+    gates::gate::{Gate},
     hash::hash_types::RichField,
     iop::{
         ext_target::ExtensionTarget,
@@ -19,8 +19,6 @@ use plonky2::{
     util::serialization::{Buffer, IoResult, Read, Write},
 };
 
-
-
 #[derive(Copy, Clone, Debug)]
 pub struct Xor3Gate<F: RichField + Extendable<D>, const D: usize> {
     _phantom: PhantomData<F>,
@@ -33,7 +31,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Default for Xor3Gate<F, D> {
 }
 
 impl<F: RichField + Extendable<D>, const D: usize> Xor3Gate<F, D> {
-    pub fn new_from_config(config: &CircuitConfig) -> Self {
+    pub fn new_from_config(_config: &CircuitConfig) -> Self {
         Self {
             _phantom: PhantomData,
         }
@@ -47,26 +45,25 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for Xor3Gate<F, D>
 
     fn num_wires(&self) -> usize {
         64
-    } 
+    }
     fn num_constants(&self) -> usize {
         0
     }
     fn degree(&self) -> usize {
         4
-    }  
+    }
     fn num_constraints(&self) -> usize {
         16
     }
 
-
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension> {
         let mut res = Vec::new();
         for i in 0..16 {
-            let a = vars.local_wires[0 + i*4];
-            let b = vars.local_wires[1 + i*4];
-            let c = vars.local_wires[2 + i*4];
-            let o = vars.local_wires[3 + i*4];
-    
+            let a = vars.local_wires[0 + i * 4];
+            let b = vars.local_wires[1 + i * 4];
+            let c = vars.local_wires[2 + i * 4];
+            let o = vars.local_wires[3 + i * 4];
+
             // Direct formula - no intermediate wires needed
             let u = a - b;
             let d = u * u;
@@ -74,10 +71,10 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for Xor3Gate<F, D>
             let expected = v * v;
             res.push(o - expected);
         }
-        
+
         res
     }
-    
+
     fn eval_unfiltered_circuit(
         &self,
         builder: &mut CircuitBuilder<F, D>,
@@ -85,24 +82,24 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for Xor3Gate<F, D>
     ) -> Vec<ExtensionTarget<D>> {
         let mut res = Vec::new();
         for i in 0..16 {
-            let a = vars.local_wires[0 + i*4];
-            let b = vars.local_wires[1 + i*4];
-            let c = vars.local_wires[2 + i*4];
-            let o = vars.local_wires[3 + i*4];
-    
+            let a = vars.local_wires[0 + i * 4];
+            let b = vars.local_wires[1 + i * 4];
+            let c = vars.local_wires[2 + i * 4];
+            let o = vars.local_wires[3 + i * 4];
+
             // Build the same computation using circuit operations
-            let u = builder.sub_extension(a, b);           // u = a - b
-            let d = builder.mul_extension(u, u);           // d = u * u = (a-b)^2
-            let v = builder.sub_extension(d, c);           // v = d - c = (a-b)^2 - c
-            let expected = builder.mul_extension(v, v);    // expected = v * v = ((a-b)^2 - c)^2
-        
+            let u = builder.sub_extension(a, b); // u = a - b
+            let d = builder.mul_extension(u, u); // d = u * u = (a-b)^2
+            let v = builder.sub_extension(d, c); // v = d - c = (a-b)^2 - c
+            let expected = builder.mul_extension(v, v); // expected = v * v = ((a-b)^2 - c)^2
+
             // Return the constraint: o - expected = 0
             let constraint = builder.sub_extension(o, expected);
             res.push(constraint);
         }
         res
     }
-    
+
     fn generators(&self, row: usize, _local_constants: &[F]) -> Vec<WitnessGeneratorRef<F, D>> {
         vec![WitnessGeneratorRef::new(
             Xor3Generator::<F, D> {
@@ -136,9 +133,7 @@ struct Xor3Generator<F: RichField + Extendable<D>, const D: usize> {
     _phantom: PhantomData<F>,
 }
 
-impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
-    for Xor3Generator<F, D>
-{
+impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D> for Xor3Generator<F, D> {
     fn id(&self) -> String {
         format!("Xor3Generator(row={})", self.row)
     }
@@ -146,9 +141,9 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
     fn dependencies(&self) -> Vec<Target> {
         let mut res = Vec::new();
         for i in 0..16 {
-            res.push(Target::wire(self.row, 0 + i*4));
-            res.push(Target::wire(self.row, 1 + i*4));
-            res.push(Target::wire(self.row, 2 + i*4));
+            res.push(Target::wire(self.row, 0 + i * 4));
+            res.push(Target::wire(self.row, 1 + i * 4));
+            res.push(Target::wire(self.row, 2 + i * 4));
         }
         res
     }
@@ -159,12 +154,12 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
         out_buffer: &mut GeneratedValues<F>,
     ) -> Result<()> {
         for i in 0..16 {
-            let a = witness.get_target(Target::wire(self.row, 0 + i*4));
-            let b = witness.get_target(Target::wire(self.row, 1 + i*4));
-            let c = witness.get_target(Target::wire(self.row, 2 + i*4));
+            let a = witness.get_target(Target::wire(self.row, 0 + i * 4));
+            let b = witness.get_target(Target::wire(self.row, 1 + i * 4));
+            let c = witness.get_target(Target::wire(self.row, 2 + i * 4));
             let o = (a.to_canonical_u64() ^ b.to_canonical_u64() ^ c.to_canonical_u64()) & 1;
 
-            out_buffer.set_target(Target::wire(self.row, 3 + i*4), F::from_canonical_u64(o))?;
+            out_buffer.set_target(Target::wire(self.row, 3 + i * 4), F::from_canonical_u64(o))?;
         }
 
         // Set the witness values
@@ -184,9 +179,6 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
     }
 }
 
-
-
-
 #[derive(Copy, Clone, Debug)]
 pub struct MajGate<F: RichField + Extendable<D>, const D: usize> {
     _phantom: PhantomData<F>,
@@ -199,7 +191,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Default for MajGate<F, D> {
 }
 
 impl<F: RichField + Extendable<D>, const D: usize> MajGate<F, D> {
-    pub fn new_from_config(config: &CircuitConfig) -> Self {
+    pub fn new_from_config(_config: &CircuitConfig) -> Self {
         Self {
             _phantom: PhantomData,
         }
@@ -213,34 +205,33 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for MajGate<F, D> 
 
     fn num_wires(&self) -> usize {
         64
-    } 
+    }
     fn num_constants(&self) -> usize {
         0
     }
     fn degree(&self) -> usize {
         3
-    }  
+    }
     fn num_constraints(&self) -> usize {
         16
     }
 
-
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension> {
         let mut res = Vec::new();
         for i in 0..16 {
-            let a = vars.local_wires[0 + i*4];
-            let b = vars.local_wires[1 + i*4];
-            let c = vars.local_wires[2 + i*4];
-            let o = vars.local_wires[3 + i*4];
-    
+            let a = vars.local_wires[0 + i * 4];
+            let b = vars.local_wires[1 + i * 4];
+            let c = vars.local_wires[2 + i * 4];
+            let o = vars.local_wires[3 + i * 4];
+
             // Direct formula - no intermediate wires needed
             let expected = a * b + a * c + b * c - a * b * c * F::Extension::from_canonical_u64(2);
             res.push(o - expected);
         }
-        
+
         res
     }
-    
+
     fn eval_unfiltered_circuit(
         &self,
         builder: &mut CircuitBuilder<F, D>,
@@ -248,11 +239,11 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for MajGate<F, D> 
     ) -> Vec<ExtensionTarget<D>> {
         let mut res = Vec::new();
         for i in 0..16 {
-            let a = vars.local_wires[0 + i*4];
-            let b = vars.local_wires[1 + i*4];
-            let c = vars.local_wires[2 + i*4];
-            let o = vars.local_wires[3 + i*4];
-    
+            let a = vars.local_wires[0 + i * 4];
+            let b = vars.local_wires[1 + i * 4];
+            let c = vars.local_wires[2 + i * 4];
+            let o = vars.local_wires[3 + i * 4];
+
             // Build the same computation using circuit operations
             let two = builder.constant_extension(F::Extension::from_canonical_u64(2));
             let m = builder.mul_extension(b, c);
@@ -268,7 +259,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for MajGate<F, D> 
         }
         res
     }
-    
+
     fn generators(&self, row: usize, _local_constants: &[F]) -> Vec<WitnessGeneratorRef<F, D>> {
         vec![WitnessGeneratorRef::new(
             MajGenerator::<F, D> {
@@ -302,9 +293,7 @@ struct MajGenerator<F: RichField + Extendable<D>, const D: usize> {
     _phantom: PhantomData<F>,
 }
 
-impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
-    for MajGenerator<F, D>
-{
+impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D> for MajGenerator<F, D> {
     fn id(&self) -> String {
         format!("MajGenerator(row={})", self.row)
     }
@@ -312,9 +301,9 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
     fn dependencies(&self) -> Vec<Target> {
         let mut res = Vec::new();
         for i in 0..16 {
-            res.push(Target::wire(self.row, 0 + i*4));
-            res.push(Target::wire(self.row, 1 + i*4));
-            res.push(Target::wire(self.row, 2 + i*4));
+            res.push(Target::wire(self.row, 0 + i * 4));
+            res.push(Target::wire(self.row, 1 + i * 4));
+            res.push(Target::wire(self.row, 2 + i * 4));
         }
         res
     }
@@ -325,12 +314,15 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
         out_buffer: &mut GeneratedValues<F>,
     ) -> Result<()> {
         for i in 0..16 {
-            let a = witness.get_target(Target::wire(self.row, 0 + i*4));
-            let b = witness.get_target(Target::wire(self.row, 1 + i*4));
-            let c = witness.get_target(Target::wire(self.row, 2 + i*4));
-            let o = ((a.to_canonical_u64() & b.to_canonical_u64()) ^ (a.to_canonical_u64() & c.to_canonical_u64()) ^ (b.to_canonical_u64() & c.to_canonical_u64())) & 1;
+            let a = witness.get_target(Target::wire(self.row, 0 + i * 4));
+            let b = witness.get_target(Target::wire(self.row, 1 + i * 4));
+            let c = witness.get_target(Target::wire(self.row, 2 + i * 4));
+            let o = ((a.to_canonical_u64() & b.to_canonical_u64())
+                ^ (a.to_canonical_u64() & c.to_canonical_u64())
+                ^ (b.to_canonical_u64() & c.to_canonical_u64()))
+                & 1;
 
-            out_buffer.set_target(Target::wire(self.row, 3 + i*4), F::from_canonical_u64(o))?;
+            out_buffer.set_target(Target::wire(self.row, 3 + i * 4), F::from_canonical_u64(o))?;
         }
 
         // Set the witness values
@@ -350,8 +342,6 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
     }
 }
 
-
-
 #[derive(Copy, Clone, Debug)]
 pub struct ChGate<F: RichField + Extendable<D>, const D: usize> {
     _phantom: PhantomData<F>,
@@ -364,7 +354,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Default for ChGate<F, D> {
 }
 
 impl<F: RichField + Extendable<D>, const D: usize> ChGate<F, D> {
-    pub fn new_from_config(config: &CircuitConfig) -> Self {
+    pub fn new_from_config(_config: &CircuitConfig) -> Self {
         Self {
             _phantom: PhantomData,
         }
@@ -378,34 +368,33 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for ChGate<F, D> {
 
     fn num_wires(&self) -> usize {
         64
-    } 
+    }
     fn num_constants(&self) -> usize {
         0
     }
     fn degree(&self) -> usize {
         2
-    }  
+    }
     fn num_constraints(&self) -> usize {
         16
     }
 
-
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension> {
         let mut res = Vec::new();
         for i in 0..16 {
-            let a = vars.local_wires[0 + i*4];
-            let b = vars.local_wires[1 + i*4];
-            let c = vars.local_wires[2 + i*4];
-            let o = vars.local_wires[3 + i*4];
-    
+            let a = vars.local_wires[0 + i * 4];
+            let b = vars.local_wires[1 + i * 4];
+            let c = vars.local_wires[2 + i * 4];
+            let o = vars.local_wires[3 + i * 4];
+
             // Direct formula - no intermediate wires needed
             let expected = a * (b - c) + c;
             res.push(o - expected);
         }
-        
+
         res
     }
-    
+
     fn eval_unfiltered_circuit(
         &self,
         builder: &mut CircuitBuilder<F, D>,
@@ -413,11 +402,11 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for ChGate<F, D> {
     ) -> Vec<ExtensionTarget<D>> {
         let mut res = Vec::new();
         for i in 0..16 {
-            let a = vars.local_wires[0 + i*4];
-            let b = vars.local_wires[1 + i*4];
-            let c = vars.local_wires[2 + i*4];
-            let o = vars.local_wires[3 + i*4];
-    
+            let a = vars.local_wires[0 + i * 4];
+            let b = vars.local_wires[1 + i * 4];
+            let c = vars.local_wires[2 + i * 4];
+            let o = vars.local_wires[3 + i * 4];
+
             // Build the same computation using circuit operations
             let b_sub_c = builder.sub_extension(b, c);
             let a_mul_b_sub_c = builder.mul_extension(a, b_sub_c);
@@ -429,7 +418,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for ChGate<F, D> {
         }
         res
     }
-    
+
     fn generators(&self, row: usize, _local_constants: &[F]) -> Vec<WitnessGeneratorRef<F, D>> {
         vec![WitnessGeneratorRef::new(
             ChGenerator::<F, D> {
@@ -463,9 +452,7 @@ struct ChGenerator<F: RichField + Extendable<D>, const D: usize> {
     _phantom: PhantomData<F>,
 }
 
-impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
-    for ChGenerator<F, D>
-{
+impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D> for ChGenerator<F, D> {
     fn id(&self) -> String {
         format!("ChGenerator(row={})", self.row)
     }
@@ -473,9 +460,9 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
     fn dependencies(&self) -> Vec<Target> {
         let mut res = Vec::new();
         for i in 0..16 {
-            res.push(Target::wire(self.row, 0 + i*4));
-            res.push(Target::wire(self.row, 1 + i*4));
-            res.push(Target::wire(self.row, 2 + i*4));
+            res.push(Target::wire(self.row, 0 + i * 4));
+            res.push(Target::wire(self.row, 1 + i * 4));
+            res.push(Target::wire(self.row, 2 + i * 4));
         }
         res
     }
@@ -486,12 +473,13 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
         out_buffer: &mut GeneratedValues<F>,
     ) -> Result<()> {
         for i in 0..16 {
-            let a = witness.get_target(Target::wire(self.row, 0 + i*4));
-            let b = witness.get_target(Target::wire(self.row, 1 + i*4));
-            let c = witness.get_target(Target::wire(self.row, 2 + i*4));
-            let o = a.to_canonical_u64() * (b.to_canonical_u64() - c.to_canonical_u64()) + c.to_canonical_u64();
+            let a = witness.get_target(Target::wire(self.row, 0 + i * 4));
+            let b = witness.get_target(Target::wire(self.row, 1 + i * 4));
+            let c = witness.get_target(Target::wire(self.row, 2 + i * 4));
+            let o = a.to_canonical_u64() * (b.to_canonical_u64() - c.to_canonical_u64())
+                + c.to_canonical_u64();
 
-            out_buffer.set_target(Target::wire(self.row, 3 + i*4), F::from_canonical_u64(o))?;
+            out_buffer.set_target(Target::wire(self.row, 3 + i * 4), F::from_canonical_u64(o))?;
         }
 
         // Set the witness values
@@ -510,5 +498,3 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
         })
     }
 }
-
-
